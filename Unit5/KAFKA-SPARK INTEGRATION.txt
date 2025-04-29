@@ -1,0 +1,95 @@
+KAFKA INTEGRATION WITH APACHE SPARK
+
+PRACTICAL: CALCULATE AVERAGE OF TEMP STREAMED USING KAFKA
+
+
+STEP1: 
+
+Initialize the zookeeper
+
+cd C:\kafka\kafka_2.13-3.9.0
+.\bin\windows\zookeeper-server-start.bat .\config\zookeeper.properties
+
+
+STEP 2:
+
+Initialize the kafka
+
+cd C:\kafka\kafka_2.13-3.9.0
+.\bin\windows\kafka-server-start.bat .\config\server.properties
+
+
+STEP 3:
+
+C:\kafka\kafka_2.13-3.9.0\bin\windows\kafka-topics.bat --create --bootstrap-server localhost:9092 --topic temp
+
+
+STEP 4:
+
+Now create a producer on same CMD window
+
+C:\kafka\kafka_2.13-3.9.0\bin\windows\kafka-console-producer.bat --broker-list localhost:9092 --topic temp
+
+
+STEP 5:  Run spark with integration of kafka
+
+
+spark-shell --packages org.apache.spark:spark-sql-kafka-0-10_2.13:3.4.4
+
+
+This ensures:
+
+Scala version: 2.13
+
+Spark version: 3.4.4
+
+(use scala and spark version as per your system)
+
+
+
+
+STEP 6:
+
+run below code in spark-shell
+
+
+
+
+import org.apache.spark.sql.functions._
+import org.apache.spark.sql.types._
+
+// 1. Define schema
+val schema = new StructType().add("value", StringType)
+
+// 2. Read stream from Kafka
+val kafkaStreamDF = spark.readStream
+  .format("kafka")
+  .option("kafka.bootstrap.servers", "localhost:9092")
+  .option("subscribe", "temp")
+  .option("startingOffsets", "earliest")
+  .load()
+
+// 3. Extract value and convert to Double
+val valuesDF = kafkaStreamDF.selectExpr("CAST(value AS STRING) as value")
+  .withColumn("temp", col("value").cast("double"))
+  .withColumn("timestamp", current_timestamp())
+
+// 4. Calculate daily average (simulate with tumbling window for now)
+val avgDF = valuesDF
+  .withWatermark("timestamp", "1 minute")
+  .groupBy(window(col("timestamp"), "1 minute").as("window"))
+  .agg(avg("temp").alias("average_temperature"))
+
+// 5. Print to console
+val query = avgDF.writeStream
+  .outputMode("update")
+  .format("console")
+  .option("truncate", "false")
+  .start()
+
+query.awaitTermination()
+
+
+
+
+this will result to the average value streamed using kafka after every one minute as specified above.
